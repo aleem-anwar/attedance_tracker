@@ -3,24 +3,37 @@ import datetime
 import math
 import pandas as pd
 from supabase import create_client, Client
+import extra_streamlit_components as stx
 
 st.set_page_config(page_title="IIITP Attendance Portal", layout="wide", initial_sidebar_state="collapsed")
 
+# ==========================================
+# COOKIE MANAGER INITIALIZATION
+# ==========================================
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
 
+cookie_manager = get_cookie_manager()
+
+# ==========================================
+# SUPABASE CONNECTION INITIALIZATION
+# ==========================================
 @st.cache_resource
 def init_supabase() -> Client:
     try:
         url = st.secrets["supabase"]["url"]
         key = st.secrets["supabase"]["key"]
     except Exception:
-     
         url = "https://placeholder.supabase.co"
         key = "placeholder-key"
     return create_client(url, key)
 
 supabase = init_supabase()
 
-
+# ==========================================
+# KINETIC TYPOGRAPHY DESIGN SYSTEM CSS
+# ==========================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&display=swap');
@@ -176,7 +189,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
+# ==========================================
+# ACADEMIC CONFIGURATION
+# ==========================================
 START_DATE = datetime.date(2026, 8, 20)
 END_DATE = datetime.date(2026, 12, 11)
 
@@ -210,11 +225,22 @@ def get_timetable(lab_group):
         tt[4].append("BEE Lab")
     return tt
 
-
+# ==========================================
+# SESSION & COOKIE STATE RESTORATION
+# ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
     st.session_state.username = ""
+
+# Check if cookie exists to persist login across sessions/visits
+saved_user = cookie_manager.get(cookie="iiitp_user")
+saved_role = cookie_manager.get(cookie="iiitp_role")
+
+if not st.session_state.logged_in and saved_user and saved_role:
+    st.session_state.logged_in = True
+    st.session_state.username = saved_user
+    st.session_state.role = saved_role
 
 if "lab_batch" not in st.session_state:
     st.session_state.lab_batch = "G1"
@@ -222,7 +248,7 @@ if "lab_batch" not in st.session_state:
 if "current_subject" not in st.session_state:
     st.session_state.current_subject = "BEE"
 
-
+# Supabase Helper Functions
 def get_user_absences(username):
     response = supabase.table("absences").select("subject, date").eq("username", username).execute()
     absences = {}
@@ -325,12 +351,15 @@ def get_all_subjects():
     return sorted(list(subjects))
 
 
+# ==========================================
+# AUTHENTICATION PAGE
+# ==========================================
 if not st.session_state.logged_in:
     st.markdown("""
     <div class="kinetic-title">
         <span class="text-white">ATTENDANCE</span><br>
         <span class="text-yellow">TRACKER</span><br>
-        <span class="text-yellow">SEC-A</span>
+        <span class="text-yellow">PORTAL</span>
     </div>
     """, unsafe_allow_html=True)
     
@@ -349,9 +378,14 @@ if not st.session_state.logged_in:
             res = supabase.table("users").select("password, role").eq("username", clean_user).execute()
             
             if res.data and res.data[0]["password"] == clean_pass:
+                role = res.data[0]["role"]
                 st.session_state.logged_in = True
                 st.session_state.username = clean_user
-                st.session_state.role = res.data[0]["role"]
+                st.session_state.role = role
+                
+                # Set persistent browser cookies valid for 30 days
+                cookie_manager.set("iiitp_user", clean_user, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+                cookie_manager.set("iiitp_role", role, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
                 st.rerun()
             else:
                 st.error("INVALID USERNAME OR PASSWORD.")
@@ -387,13 +421,19 @@ if not st.session_state.logged_in:
     st.stop()
 
 
+# ==========================================
+# MAIN APPLICATION INTERFACE
+# ==========================================
 st.sidebar.markdown(f'<div class="kinetic-subtitle">{st.session_state.role}</div>', unsafe_allow_html=True)
 st.sidebar.write(f"USER: **{st.session_state.username.upper()}**")
 
 if st.sidebar.button("LOGOUT"):
+    # Clear session and wipe browser cookies on logout
     st.session_state.logged_in = False
     st.session_state.role = None
     st.session_state.username = ""
+    cookie_manager.delete("iiitp_user")
+    cookie_manager.delete("iiitp_role")
     st.rerun()
 
 all_subjects = get_all_subjects()
@@ -408,7 +448,9 @@ if st.session_state.role == "Student":
 
 user_absences = get_user_absences(st.session_state.username)
 
-
+# ------------------------------------------
+# STUDENT NOTIFICATION BAR (< 80% CHECK)
+# ------------------------------------------
 if st.session_state.role == "Student":
     low_attendance_subjects = []
     for s in all_subjects:
@@ -424,7 +466,9 @@ if st.session_state.role == "Student":
         warning_msg = f"⚠️ WARNING: Attendance has fallen below 80% in: {', '.join(low_attendance_subjects)}"
         st.error(warning_msg)
 
-
+# ------------------------------------------
+# OVERALL ATTENDANCE CALCULATION (MARQUEE)
+# ------------------------------------------
 total_overall_classes = 0
 total_overall_attended = 0
 
@@ -451,6 +495,9 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ------------------------------------------
+# SUBJECT SWITCHER BUTTONS
+# ------------------------------------------
 st.markdown('<div class="kinetic-subtitle">SELECT SUBJECT</div>', unsafe_allow_html=True)
 cols = st.columns(len(all_subjects))
 for idx, subj in enumerate(all_subjects):
@@ -479,7 +526,9 @@ s_col3.metric("TOTAL CLASSES", total_subj_classes)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-
+# ------------------------------------------
+# STUDENT VIEW: CLOCK ATTENDANCE
+# ------------------------------------------
 if st.session_state.role == "Student":
     st.markdown('<div class="kinetic-subtitle">MARK ATTENDANCE</div>', unsafe_allow_html=True)
     
@@ -505,7 +554,9 @@ if st.session_state.role == "Student":
     else:
         st.info(f"NO {current_subj} CLASS SCHEDULED ON {selected_date.strftime('%b %d, %Y')}.")
 
-
+# ------------------------------------------
+# ADMIN VIEW: SCHEDULE MANAGEMENT & USERS
+# ------------------------------------------
 if st.session_state.role == "Admin":
     st.markdown("---")
     st.markdown('<div class="kinetic-subtitle">SCHEDULE CONTROLS</div>', unsafe_allow_html=True)
