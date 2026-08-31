@@ -330,7 +330,7 @@ if not st.session_state.logged_in:
     <div class="kinetic-title">
         <span class="text-white">ATTENDANCE</span><br>
         <span class="text-yellow">TRACKER</span><br>
-        <span class="text-yellow">PORTAL</span>
+        <span class="text-yellow">SEC-A</span>
     </div>
     """, unsafe_allow_html=True)
     
