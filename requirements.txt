@@ -1,4 +1,4 @@
 streamlit
 pandas
 supabase
-extra-streamlit-components
+streamlit-cookies-controller
