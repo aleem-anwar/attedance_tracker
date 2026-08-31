@@ -5,9 +5,7 @@ import pandas as pd
 
 st.set_page_config(page_title="IIITP Attendance Tracker for CSE(SEC-A)", layout="wide", initial_sidebar_state="collapsed")
 
-# ==========================================
-# KINETIC TYPOGRAPHY DESIGN SYSTEM CSS
-# ==========================================
+
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&display=swap');
@@ -163,9 +161,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# ACADEMIC CONFIGURATION
-# ==========================================
+
+
 START_DATE = datetime.date(2026, 8, 20)
 END_DATE = datetime.date(2026, 12, 11)
 
@@ -199,9 +196,8 @@ def get_timetable(lab_group):
         tt[4].append("BEE Lab")
     return tt
 
-# ==========================================
-# SESSION STATE INITIALIZATION
-# ==========================================
+
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
@@ -255,9 +251,8 @@ def get_all_subjects():
     return sorted(list(subjects))
 
 
-# ==========================================
-# AUTHENTICATION PAGE
-# ==========================================
+
+
 if not st.session_state.logged_in:
     st.markdown("""
     <div class="kinetic-title">
@@ -285,7 +280,7 @@ if not st.session_state.logged_in:
                 st.session_state.role = "Admin" if clean_user == "admin" else "Student"
                 st.rerun()
             else:
-                st.error("INVALID USERNAME OR PASSWORD. (ADMIN: admin / mtech)")
+                st.error("INVALID USERNAME OR PASSWORD.")
 
     with auth_tab2:
         st.markdown('<div class="kinetic-subtitle">CREATE ACCOUNT</div>', unsafe_allow_html=True)
@@ -307,9 +302,8 @@ if not st.session_state.logged_in:
     st.stop()
 
 
-# ==========================================
-# MAIN APPLICATION INTERFACE
-# ==========================================
+
+
 st.sidebar.markdown(f'<div class="kinetic-subtitle">{st.session_state.role}</div>', unsafe_allow_html=True)
 st.sidebar.write(f"USER: **{st.session_state.username.upper()}**")
 
@@ -329,9 +323,8 @@ if st.session_state.role == "Student":
         st.session_state.current_subject = get_all_subjects()[0]
         st.rerun()
 
-# ------------------------------------------
-# STUDENT NOTIFICATION BAR (< 80% CHECK)
-# ------------------------------------------
+
+
 if st.session_state.role == "Student":
     low_attendance_subjects = []
     for s in all_subjects:
@@ -347,9 +340,8 @@ if st.session_state.role == "Student":
         warning_msg = f"⚠️ WARNING: Attendance has fallen below 80% in: {', '.join(low_attendance_subjects)}"
         st.error(warning_msg)
 
-# ------------------------------------------
-# OVERALL ATTENDANCE CALCULATION (MARQUEE)
-# ------------------------------------------
+
+
 total_overall_classes = 0
 total_overall_attended = 0
 
@@ -376,9 +368,8 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ------------------------------------------
-# SUBJECT SWITCHER BUTTONS
-# ------------------------------------------
+
+
 st.markdown('<div class="kinetic-subtitle">SELECT SUBJECT</div>', unsafe_allow_html=True)
 cols = st.columns(len(all_subjects))
 for idx, subj in enumerate(all_subjects):
@@ -407,9 +398,8 @@ s_col3.metric("TOTAL CLASSES", total_subj_classes)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ------------------------------------------
-# STUDENT VIEW: CLOCK ATTENDANCE
-# ------------------------------------------
+
+
 if st.session_state.role == "Student":
     st.markdown('<div class="kinetic-subtitle">MARK ATTENDANCE</div>', unsafe_allow_html=True)
     
@@ -437,9 +427,8 @@ if st.session_state.role == "Student":
     else:
         st.info(f"NO {current_subj} CLASS SCHEDULED ON {selected_date.strftime('%b %d, %Y')}.")
 
-# ------------------------------------------
-# ADMIN VIEW: SCHEDULE MANAGEMENT & USERS
-# ------------------------------------------
+
+
 if st.session_state.role == "Admin":
     st.markdown("---")
     st.markdown('<div class="kinetic-subtitle">SCHEDULE CONTROLS</div>', unsafe_allow_html=True)
