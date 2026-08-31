@@ -2,8 +2,25 @@ import streamlit as st
 import datetime
 import math
 import pandas as pd
+from supabase import create_client, Client
 
 st.set_page_config(page_title="IIITP Attendance Portal", layout="wide", initial_sidebar_state="collapsed")
+
+# ==========================================
+# SUPABASE CONNECTION INITIALIZATION
+# ==========================================
+@st.cache_resource
+def init_supabase() -> Client:
+    try:
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+    except Exception:
+        # Fallback placeholders if secrets aren't set yet locally
+        url = "https://placeholder.supabase.co"
+        key = "placeholder-key"
+    return create_client(url, key)
+
+supabase = init_supabase()
 
 # ==========================================
 # KINETIC TYPOGRAPHY DESIGN SYSTEM CSS
@@ -207,41 +224,93 @@ if "logged_in" not in st.session_state:
     st.session_state.role = None
     st.session_state.username = ""
 
-if "users_db" not in st.session_state:
-    try:
-        admin_user = st.secrets["credentials"]["admin_username"]
-        admin_pass = st.secrets["credentials"]["admin_password"]
-    except Exception:
-        admin_user = "admin"
-        admin_pass = "mtech"
-
-    st.session_state.users_db = {
-        "student": "student123",
-        admin_user: admin_pass
-    }
-
 if "lab_batch" not in st.session_state:
     st.session_state.lab_batch = "G1"
-    
-if "absences" not in st.session_state:
-    st.session_state.absences = {}
-    
-if "extra_classes" not in st.session_state:
-    st.session_state.extra_classes = {}
-    
-if "cancelled_classes" not in st.session_state:
-    st.session_state.cancelled_classes = {}
-
-if "admin_logs" not in st.session_state:
-    st.session_state.admin_logs = []
 
 if "current_subject" not in st.session_state:
     st.session_state.current_subject = "BEE"
+
+# Supabase Helper Functions
+def get_user_absences(username):
+    response = supabase.table("absences").select("subject, date").eq("username", username).execute()
+    absences = {}
+    if response.data:
+        for row in response.data:
+            subj = row["subject"]
+            dt = datetime.date.fromisoformat(row["date"])
+            if subj not in absences:
+                absences[subj] = []
+            absences[subj].append(dt)
+    return absences
+
+def save_absence(username, subj, date_obj):
+    supabase.table("absences").insert({
+        "username": username,
+        "subject": subj,
+        "date": date_obj.isoformat()
+    }).execute()
+
+def remove_absence(username, subj, date_obj):
+    supabase.table("absences").delete().match({
+        "username": username,
+        "subject": subj,
+        "date": date_obj.isoformat()
+    }).execute()
+
+def get_overrides():
+    response = supabase.table("overrides").select("subject, date, type").execute()
+    extra_classes = {}
+    cancelled_classes = {}
+    if response.data:
+        for row in response.data:
+            subj = row["subject"]
+            dt_obj = datetime.date.fromisoformat(row["date"])
+            o_type = row["type"]
+            if o_type == 'extra':
+                if subj not in extra_classes: extra_classes[subj] = []
+                extra_classes[subj].append(dt_obj)
+            elif o_type == 'cancel':
+                if subj not in cancelled_classes: cancelled_classes[subj] = []
+                cancelled_classes[subj].append(dt_obj)
+    return extra_classes, cancelled_classes
+
+def add_override(subj, dt_obj, o_type):
+    supabase.table("overrides").insert({
+        "subject": subj,
+        "date": dt_obj.isoformat(),
+        "type": o_type
+    }).execute()
+
+def remove_override_pair(subj, dt_obj, o_type):
+    supabase.table("overrides").delete().match({
+        "subject": subj,
+        "date": dt_obj.isoformat(),
+        "type": o_type
+    }).execute()
+
+def get_admin_logs():
+    response = supabase.table("admin_logs").select("timestamp, action, subject, date").execute()
+    logs = []
+    if response.data:
+        for r in response.data:
+            logs.insert(0, {"Timestamp": r["timestamp"], "Action": r["action"], "Subject": r["subject"], "Date": r["date"]})
+    return logs
+
+def log_admin_action(action, subj, dt_str):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    supabase.table("admin_logs").insert({
+        "timestamp": timestamp,
+        "action": action,
+        "subject": subj,
+        "date": dt_str
+    }).execute()
 
 def get_active_classes(subj):
     tt = get_timetable(st.session_state.lab_batch)
     valid_dates = set()
     curr_date = START_DATE
+    
+    extra_classes, cancelled_classes = get_overrides()
     
     while curr_date <= END_DATE:
         if curr_date.weekday() < 5 and curr_date not in HOLIDAYS:
@@ -249,9 +318,9 @@ def get_active_classes(subj):
                 valid_dates.add(curr_date)
         curr_date += datetime.timedelta(days=1)
         
-    for extra_date in st.session_state.extra_classes.get(subj, []):
+    for extra_date in extra_classes.get(subj, []):
         valid_dates.add(extra_date)
-    for cancel_date in st.session_state.cancelled_classes.get(subj, []):
+    for cancel_date in cancelled_classes.get(subj, []):
         valid_dates.discard(cancel_date)
         
     return sorted(list(valid_dates))
@@ -285,22 +354,15 @@ if not st.session_state.logged_in:
         
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("LOG IN", type="primary", key="login_btn"):
-            clean_user = l_user.strip()
+            clean_user = l_user.strip().lower()
             clean_pass = l_pass.strip()
             
-            try:
-                admin_user = st.secrets["credentials"]["admin_username"]
-                admin_pass = st.secrets["credentials"]["admin_password"]
-            except Exception:
-                admin_user = "admin"
-                admin_pass = "mtech"
-
-            st.session_state.users_db[admin_user] = admin_pass
-
-            if clean_user in st.session_state.users_db and st.session_state.users_db[clean_user] == clean_pass:
+            res = supabase.table("users").select("password, role").eq("username", clean_user).execute()
+            
+            if res.data and res.data[0]["password"] == clean_pass:
                 st.session_state.logged_in = True
                 st.session_state.username = clean_user
-                st.session_state.role = "Admin" if clean_user == admin_user else "Student"
+                st.session_state.role = res.data[0]["role"]
                 st.rerun()
             else:
                 st.error("INVALID USERNAME OR PASSWORD.")
@@ -312,16 +374,26 @@ if not st.session_state.logged_in:
         
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("REGISTER", key="signup_btn"):
-            clean_s_user = s_user.strip()
+            clean_s_user = s_user.strip().lower()
             clean_s_pass = s_pass.strip()
+            
             if not clean_s_user or not clean_s_pass:
                 st.error("FIELDS CANNOT BE BLANK.")
-            elif clean_s_user in st.session_state.users_db:
-                st.error("USERNAME ALREADY EXISTS.")
+            elif len(clean_s_user) < 3:
+                st.error("USERNAME MUST BE AT LEAST 3 CHARACTERS LONG.")
+            elif clean_s_user == "admin":
+                st.error("RESERVED USERNAME.")
             else:
-                # Save into session state users dict dynamically
-                st.session_state.users_db[clean_s_user] = clean_s_pass
-                st.success("ACCOUNT CREATED. SWITCH TO LOG IN TAB.")
+                check_res = supabase.table("users").select("username").eq("username", clean_s_user).execute()
+                if check_res.data:
+                    st.error("USERNAME ALREADY EXISTS.")
+                else:
+                    supabase.table("users").insert({
+                        "username": clean_s_user,
+                        "password": clean_s_pass,
+                        "role": "Student"
+                    }).execute()
+                    st.success("ACCOUNT CREATED. SWITCH TO LOG IN TAB.")
                 
     st.stop()
 
@@ -348,6 +420,8 @@ if st.session_state.role == "Student":
         st.session_state.current_subject = get_all_subjects()[0]
         st.rerun()
 
+user_absences = get_user_absences(st.session_state.username)
+
 # ------------------------------------------
 # STUDENT NOTIFICATION BAR (< 80% CHECK)
 # ------------------------------------------
@@ -356,7 +430,7 @@ if st.session_state.role == "Student":
     for s in all_subjects:
         active_dates = get_active_classes(s)
         if len(active_dates) > 0:
-            valid_absences = [d for d in st.session_state.absences.get(s, []) if d in active_dates]
+            valid_absences = [d for d in user_absences.get(s, []) if d in active_dates]
             attended = len(active_dates) - len(valid_absences)
             percentage = (attended / len(active_dates)) * 100
             if percentage < 80:
@@ -375,7 +449,7 @@ total_overall_attended = 0
 for s in all_subjects:
     active_dates = get_active_classes(s)
     total_overall_classes += len(active_dates)
-    valid_absences = [d for d in st.session_state.absences.get(s, []) if d in active_dates]
+    valid_absences = [d for d in user_absences.get(s, []) if d in active_dates]
     total_overall_attended += (len(active_dates) - len(valid_absences))
 
 overall_percentage = (total_overall_attended / total_overall_classes * 100) if total_overall_classes > 0 else 0
@@ -409,7 +483,7 @@ for idx, subj in enumerate(all_subjects):
 
 current_subj = st.session_state.current_subject
 active_classes = get_active_classes(current_subj)
-subj_absences = [d for d in st.session_state.absences.get(current_subj, []) if d in active_classes]
+subj_absences = [d for d in user_absences.get(current_subj, []) if d in active_classes]
 
 total_subj_classes = len(active_classes)
 attended_subj = total_subj_classes - len(subj_absences)
@@ -436,22 +510,20 @@ if st.session_state.role == "Student":
     selected_date = st.date_input("SELECT DATE", value=today)
     
     if selected_date in active_classes:
-        is_absent = selected_date in st.session_state.absences.get(current_subj, [])
+        is_absent = selected_date in subj_absences
         
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
             att_label = "MARKED: ATTENDED" if not is_absent else "MARK AS ATTENDED"
             if st.button(att_label, type="primary" if not is_absent else "secondary", use_container_width=True):
                 if is_absent:
-                    st.session_state.absences[current_subj].remove(selected_date)
+                    remove_absence(st.session_state.username, current_subj, selected_date)
                     st.rerun()
         with btn_col2:
             skip_label = "MARKED: SKIPPED" if is_absent else "MARK AS SKIPPED"
             if st.button(skip_label, type="primary" if is_absent else "secondary", use_container_width=True):
                 if not is_absent:
-                    if current_subj not in st.session_state.absences:
-                        st.session_state.absences[current_subj] = []
-                    st.session_state.absences[current_subj].append(selected_date)
+                    save_absence(st.session_state.username, current_subj, selected_date)
                     st.rerun()
     else:
         st.info(f"NO {current_subj} CLASS SCHEDULED ON {selected_date.strftime('%b %d, %Y')}.")
@@ -469,17 +541,14 @@ if st.session_state.role == "Admin":
     
     with col_a1:
         if st.button("ADD EXTRA CLASS", type="primary"):
-            if current_subj not in st.session_state.extra_classes:
-                st.session_state.extra_classes[current_subj] = []
-            if admin_date not in st.session_state.extra_classes[current_subj]:
-                st.session_state.extra_classes[current_subj].append(admin_date)
-                if current_subj in st.session_state.cancelled_classes and admin_date in st.session_state.cancelled_classes[current_subj]:
-                    st.session_state.cancelled_classes[current_subj].remove(admin_date)
+            extra_classes, cancelled_classes = get_overrides()
+            current_extras = extra_classes.get(current_subj, [])
+            if admin_date not in current_extras:
+                add_override(current_subj, admin_date, 'extra')
+                if admin_date in cancelled_classes.get(current_subj, []):
+                    remove_override_pair(current_subj, admin_date, 'cancel')
                 
-                # Log action
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                st.session_state.admin_logs.insert(0, {"Timestamp": timestamp, "Action": f"Added Extra Class", "Subject": current_subj, "Date": str(admin_date)})
-                
+                log_admin_action("Added Extra Class", current_subj, str(admin_date))
                 st.success(f"EXTRA CLASS ADDED ON {admin_date}")
                 st.rerun()
             else:
@@ -487,17 +556,14 @@ if st.session_state.role == "Admin":
                 
     with col_a2:
         if st.button("CANCEL CLASS", type="primary"):
-            if current_subj not in st.session_state.cancelled_classes:
-                st.session_state.cancelled_classes[current_subj] = []
-            if admin_date not in st.session_state.cancelled_classes[current_subj]:
-                st.session_state.cancelled_classes[current_subj].append(admin_date)
-                if current_subj in st.session_state.extra_classes and admin_date in st.session_state.extra_classes[current_subj]:
-                    st.session_state.extra_classes[current_subj].remove(admin_date)
+            extra_classes, cancelled_classes = get_overrides()
+            current_cancels = cancelled_classes.get(current_subj, [])
+            if admin_date not in current_cancels:
+                add_override(current_subj, admin_date, 'cancel')
+                if admin_date in extra_classes.get(current_subj, []):
+                    remove_override_pair(current_subj, admin_date, 'extra')
                 
-                # Log action
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                st.session_state.admin_logs.insert(0, {"Timestamp": timestamp, "Action": f"Cancelled Class", "Subject": current_subj, "Date": str(admin_date)})
-
+                log_admin_action("Cancelled Class", current_subj, str(admin_date))
                 st.success(f"CLASS CANCELLED ON {admin_date}")
                 st.rerun()
             else:
@@ -505,41 +571,33 @@ if st.session_state.role == "Admin":
 
     with col_a3:
         if st.button("RESET COUNTS", type="secondary"):
-            st.session_state.absences = {}
-            st.session_state.extra_classes = {}
-            st.session_state.cancelled_classes = {}
+            supabase.table("absences").delete().neq("subject", "DUMMY").execute()
+            supabase.table("overrides").delete().neq("subject", "DUMMY").execute()
             
-            # Log action
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-            st.session_state.admin_logs.insert(0, {"Timestamp": timestamp, "Action": f"System Reset", "Subject": "All", "Date": "N/A"})
-
+            log_admin_action("System Reset", "All", "N/A")
             st.success("ALL CLASS COUNTS AND OVERRIDES RESET.")
             st.rerun()
 
     st.markdown("---")
     
-    # Live Admin Audit Log Section
     st.markdown('<div class="kinetic-subtitle">ADMIN ACTION LOG</div>', unsafe_allow_html=True)
-    if st.session_state.admin_logs:
-        logs_df = pd.DataFrame(st.session_state.admin_logs)
+    logs = get_admin_logs()
+    if logs:
+        logs_df = pd.DataFrame(logs)
         st.dataframe(logs_df, hide_index=True, use_container_width=True)
     else:
         st.info("No modifications recorded yet.")
 
     st.markdown("---")
     
-    # View Registered Users List
     st.markdown('<div class="kinetic-subtitle">REGISTERED USERS</div>', unsafe_allow_html=True)
     
+    db_users_res = supabase.table("users").select("username, role").execute()
+    
     users_data = []
-    for u in st.session_state.users_db.keys():
-        try:
-            admin_user = st.secrets["credentials"]["admin_username"]
-        except Exception:
-            admin_user = "admin"
-            
-        role = "Admin" if u == admin_user else "Student"
-        users_data.append({"Username": u, "Account Role": role})
+    if db_users_res.data:
+        for row in db_users_res.data:
+            users_data.append({"Username": row["username"], "Account Role": row["role"]})
     
     users_df = pd.DataFrame(users_data)
     
