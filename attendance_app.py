@@ -2,10 +2,35 @@ import streamlit as st
 import datetime
 import math
 import pandas as pd
+import time
+import contextlib
 from supabase import create_client, Client
 from streamlit_cookies_controller import CookieController
 
 st.set_page_config(page_title="IIITP Attendance Portal", layout="wide", initial_sidebar_state="collapsed")
+
+# ==========================================
+# CUSTOM LOADING ANIMATION (RUNNING CAT)
+# ==========================================
+@contextlib.contextmanager
+def cat_loading():
+    placeholder = st.empty()
+    with placeholder:
+        st.markdown("""
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; border: 2px dashed #DFE104; margin: 1rem 0;">
+                <img src="https://media.tenor.com/V_aOikf52qwAAAAj/cat-run.gif" width="90">
+                <span style="color: #DFE104; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.2rem; margin-top: 1rem; text-transform: uppercase; letter-spacing: 2px;">
+                    Syncing Data...
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+    # Adding a slight artificial delay so the GIF renders beautifully 
+    # instead of just glitching out if Supabase responds in 10ms.
+    time.sleep(0.6) 
+    try:
+        yield
+    finally:
+        placeholder.empty()
 
 # ==========================================
 # COOKIE CONTROLLER INITIALIZATION
@@ -100,7 +125,7 @@ st.markdown("""
         overflow: hidden;
         text-overflow: ellipsis;
         width: 100%;
-        min-height: 3.5rem; /* Forces identical chunkiness across all buttons */
+        min-height: 3.5rem;
     }
     .stButton>button[kind="primary"] {
         background-color: #DFE104;
@@ -369,22 +394,23 @@ if not st.session_state.logged_in:
         
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("LOG IN", type="primary", key="login_btn"):
-            clean_user = l_user.strip().lower()
-            clean_pass = l_pass.strip()
-            
-            res = supabase.table("users").select("password, role").eq("username", clean_user).execute()
-            
-            if res.data and res.data[0]["password"] == clean_pass:
-                role = res.data[0]["role"]
-                st.session_state.logged_in = True
-                st.session_state.username = clean_user
-                st.session_state.role = role
+            with cat_loading():
+                clean_user = l_user.strip().lower()
+                clean_pass = l_pass.strip()
                 
-                controller.set("iiitp_user", clean_user)
-                controller.set("iiitp_role", role)
-                st.rerun()
-            else:
-                st.error("INVALID USERNAME OR PASSWORD.")
+                res = supabase.table("users").select("password, role").eq("username", clean_user).execute()
+                
+                if res.data and res.data[0]["password"] == clean_pass:
+                    role = res.data[0]["role"]
+                    st.session_state.logged_in = True
+                    st.session_state.username = clean_user
+                    st.session_state.role = role
+                    
+                    controller.set("iiitp_user", clean_user)
+                    controller.set("iiitp_role", role)
+                    st.rerun()
+                else:
+                    st.error("INVALID USERNAME OR PASSWORD.")
 
     with auth_tab2:
         st.markdown('<div class="kinetic-subtitle">CREATE ACCOUNT</div>', unsafe_allow_html=True)
@@ -393,26 +419,27 @@ if not st.session_state.logged_in:
         
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("REGISTER", key="signup_btn"):
-            clean_s_user = s_user.strip().lower()
-            clean_s_pass = s_pass.strip()
-            
-            if not clean_s_user or not clean_s_pass:
-                st.error("FIELDS CANNOT BE BLANK.")
-            elif len(clean_s_user) < 3:
-                st.error("USERNAME MUST BE AT LEAST 3 CHARACTERS LONG.")
-            elif clean_s_user == "admin":
-                st.error("RESERVED USERNAME.")
-            else:
-                check_res = supabase.table("users").select("username").eq("username", clean_s_user).execute()
-                if check_res.data:
-                    st.error("USERNAME ALREADY EXISTS.")
+            with cat_loading():
+                clean_s_user = s_user.strip().lower()
+                clean_s_pass = s_pass.strip()
+                
+                if not clean_s_user or not clean_s_pass:
+                    st.error("FIELDS CANNOT BE BLANK.")
+                elif len(clean_s_user) < 3:
+                    st.error("USERNAME MUST BE AT LEAST 3 CHARACTERS LONG.")
+                elif clean_s_user == "admin":
+                    st.error("RESERVED USERNAME.")
                 else:
-                    supabase.table("users").insert({
-                        "username": clean_s_user,
-                        "password": clean_s_pass,
-                        "role": "Student"
-                    }).execute()
-                    st.success("ACCOUNT CREATED. SWITCH TO LOG IN TAB.")
+                    check_res = supabase.table("users").select("username").eq("username", clean_s_user).execute()
+                    if check_res.data:
+                        st.error("USERNAME ALREADY EXISTS.")
+                    else:
+                        supabase.table("users").insert({
+                            "username": clean_s_user,
+                            "password": clean_s_pass,
+                            "role": "Student"
+                        }).execute()
+                        st.success("ACCOUNT CREATED. SWITCH TO LOG IN TAB.")
                 
     st.stop()
 
@@ -424,12 +451,13 @@ st.sidebar.markdown(f'<div class="kinetic-subtitle">{st.session_state.role}</div
 st.sidebar.write(f"USER: **{st.session_state.username.upper()}**")
 
 if st.sidebar.button("LOGOUT"):
-    st.session_state.logged_in = False
-    st.session_state.role = None
-    st.session_state.username = ""
-    controller.remove("iiitp_user")
-    controller.remove("iiitp_role")
-    st.rerun()
+    with cat_loading():
+        st.session_state.logged_in = False
+        st.session_state.role = None
+        st.session_state.username = ""
+        controller.remove("iiitp_user")
+        controller.remove("iiitp_role")
+        st.rerun()
 
 all_subjects = get_all_subjects()
 
@@ -498,7 +526,7 @@ cols = st.columns(len(all_subjects))
 for idx, subj in enumerate(all_subjects):
     with cols[idx]:
         btn_type = "primary" if st.session_state.current_subject == subj else "secondary"
-        # FIX ADDED HERE: use_container_width=True forces uniform stretching
+        # The cat isn't placed here because switching subjects doesn't explicitly write to the DB
         if st.button(subj, key=f"tab_{subj}", type=btn_type, use_container_width=True):
             st.session_state.current_subject = subj
             st.rerun()
@@ -539,14 +567,16 @@ if st.session_state.role == "Student":
             att_label = "MARKED: ATTENDED" if not is_absent else "MARK AS ATTENDED"
             if st.button(att_label, type="primary" if not is_absent else "secondary", use_container_width=True):
                 if is_absent:
-                    remove_absence(st.session_state.username, current_subj, selected_date)
-                    st.rerun()
+                    with cat_loading():
+                        remove_absence(st.session_state.username, current_subj, selected_date)
+                        st.rerun()
         with btn_col2:
             skip_label = "MARKED: SKIPPED" if is_absent else "MARK AS SKIPPED"
             if st.button(skip_label, type="primary" if is_absent else "secondary", use_container_width=True):
                 if not is_absent:
-                    save_absence(st.session_state.username, current_subj, selected_date)
-                    st.rerun()
+                    with cat_loading():
+                        save_absence(st.session_state.username, current_subj, selected_date)
+                        st.rerun()
     else:
         st.info(f"NO {current_subj} CLASS SCHEDULED ON {selected_date.strftime('%b %d, %Y')}.")
 
@@ -563,42 +593,45 @@ if st.session_state.role == "Admin":
     
     with col_a1:
         if st.button("ADD EXTRA CLASS", type="primary", use_container_width=True):
-            extra_classes, cancelled_classes = get_overrides()
-            current_extras = extra_classes.get(current_subj, [])
-            if admin_date not in current_extras:
-                add_override(current_subj, admin_date, 'extra')
-                if admin_date in cancelled_classes.get(current_subj, []):
-                    remove_override_pair(current_subj, admin_date, 'cancel')
-                
-                log_admin_action("Added Extra Class", current_subj, str(admin_date))
-                st.success(f"EXTRA CLASS ADDED ON {admin_date}")
-                st.rerun()
-            else:
-                st.warning("CLASS ALREADY EXISTS ON THIS DATE.")
+            with cat_loading():
+                extra_classes, cancelled_classes = get_overrides()
+                current_extras = extra_classes.get(current_subj, [])
+                if admin_date not in current_extras:
+                    add_override(current_subj, admin_date, 'extra')
+                    if admin_date in cancelled_classes.get(current_subj, []):
+                        remove_override_pair(current_subj, admin_date, 'cancel')
+                    
+                    log_admin_action("Added Extra Class", current_subj, str(admin_date))
+                    st.success(f"EXTRA CLASS ADDED ON {admin_date}")
+                    st.rerun()
+                else:
+                    st.warning("CLASS ALREADY EXISTS ON THIS DATE.")
                 
     with col_a2:
         if st.button("CANCEL CLASS", type="primary", use_container_width=True):
-            extra_classes, cancelled_classes = get_overrides()
-            current_cancels = cancelled_classes.get(current_subj, [])
-            if admin_date not in current_cancels:
-                add_override(current_subj, admin_date, 'cancel')
-                if admin_date in extra_classes.get(current_subj, []):
-                    remove_override_pair(current_subj, admin_date, 'extra')
-                
-                log_admin_action("Cancelled Class", current_subj, str(admin_date))
-                st.success(f"CLASS CANCELLED ON {admin_date}")
-                st.rerun()
-            else:
-                st.warning("CLASS IS ALREADY CANCELLED.")
+            with cat_loading():
+                extra_classes, cancelled_classes = get_overrides()
+                current_cancels = cancelled_classes.get(current_subj, [])
+                if admin_date not in current_cancels:
+                    add_override(current_subj, admin_date, 'cancel')
+                    if admin_date in extra_classes.get(current_subj, []):
+                        remove_override_pair(current_subj, admin_date, 'extra')
+                    
+                    log_admin_action("Cancelled Class", current_subj, str(admin_date))
+                    st.success(f"CLASS CANCELLED ON {admin_date}")
+                    st.rerun()
+                else:
+                    st.warning("CLASS IS ALREADY CANCELLED.")
 
     with col_a3:
         if st.button("RESET COUNTS", type="secondary", use_container_width=True):
-            supabase.table("absences").delete().neq("subject", "DUMMY").execute()
-            supabase.table("overrides").delete().neq("subject", "DUMMY").execute()
-            
-            log_admin_action("System Reset", "All", "N/A")
-            st.success("ALL CLASS COUNTS AND OVERRIDES RESET.")
-            st.rerun()
+            with cat_loading():
+                supabase.table("absences").delete().neq("subject", "DUMMY").execute()
+                supabase.table("overrides").delete().neq("subject", "DUMMY").execute()
+                
+                log_admin_action("System Reset", "All", "N/A")
+                st.success("ALL CLASS COUNTS AND OVERRIDES RESET.")
+                st.rerun()
 
     st.markdown("---")
     
