@@ -3,7 +3,7 @@ import datetime
 import math
 import pandas as pd
 
-st.set_page_config(page_title="IIITP Attendance Portal", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="IIITP Attendance Tracker for CSE(SEC-A)", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
 # KINETIC TYPOGRAPHY DESIGN SYSTEM CSS
