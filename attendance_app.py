@@ -7,11 +7,15 @@ from streamlit_cookies_controller import CookieController
 
 st.set_page_config(page_title="IIITP Attendance Portal", layout="wide", initial_sidebar_state="collapsed")
 
-
+# ==========================================
+# COOKIE CONTROLLER INITIALIZATION
+# ==========================================
 controller = CookieController()
 cookies = controller.getAll()
 
-
+# ==========================================
+# SUPABASE CONNECTION INITIALIZATION
+# ==========================================
 @st.cache_resource
 def init_supabase() -> Client:
     try:
@@ -24,7 +28,9 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-
+# ==========================================
+# KINETIC TYPOGRAPHY DESIGN SYSTEM CSS
+# ==========================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&display=swap');
@@ -94,6 +100,7 @@ st.markdown("""
         overflow: hidden;
         text-overflow: ellipsis;
         width: 100%;
+        min-height: 3.5rem; /* Forces identical chunkiness across all buttons */
     }
     .stButton>button[kind="primary"] {
         background-color: #DFE104;
@@ -180,7 +187,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
+# ==========================================
+# ACADEMIC CONFIGURATION
+# ==========================================
 START_DATE = datetime.date(2026, 8, 20)
 END_DATE = datetime.date(2026, 12, 11)
 
@@ -214,7 +223,9 @@ def get_timetable(lab_group):
         tt[4].append("BEE Lab")
     return tt
 
-
+# ==========================================
+# SESSION & COOKIE STATE RESTORATION
+# ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
@@ -337,7 +348,9 @@ def get_all_subjects():
     return sorted(list(subjects))
 
 
-
+# ==========================================
+# AUTHENTICATION PAGE
+# ==========================================
 if not st.session_state.logged_in:
     st.markdown("""
     <div class="kinetic-title">
@@ -404,7 +417,9 @@ if not st.session_state.logged_in:
     st.stop()
 
 
-
+# ==========================================
+# MAIN APPLICATION INTERFACE
+# ==========================================
 st.sidebar.markdown(f'<div class="kinetic-subtitle">{st.session_state.role}</div>', unsafe_allow_html=True)
 st.sidebar.write(f"USER: **{st.session_state.username.upper()}**")
 
@@ -428,7 +443,9 @@ if st.session_state.role == "Student":
 
 user_absences = get_user_absences(st.session_state.username)
 
-
+# ------------------------------------------
+# STUDENT NOTIFICATION BAR (< 80% CHECK)
+# ------------------------------------------
 if st.session_state.role == "Student":
     low_attendance_subjects = []
     for s in all_subjects:
@@ -444,7 +461,9 @@ if st.session_state.role == "Student":
         warning_msg = f"⚠️ WARNING: Attendance has fallen below 80% in: {', '.join(low_attendance_subjects)}"
         st.error(warning_msg)
 
-
+# ------------------------------------------
+# OVERALL ATTENDANCE CALCULATION (MARQUEE)
+# ------------------------------------------
 total_overall_classes = 0
 total_overall_attended = 0
 
@@ -471,13 +490,16 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-
+# ------------------------------------------
+# SUBJECT SWITCHER BUTTONS
+# ------------------------------------------
 st.markdown('<div class="kinetic-subtitle">SELECT SUBJECT</div>', unsafe_allow_html=True)
 cols = st.columns(len(all_subjects))
 for idx, subj in enumerate(all_subjects):
     with cols[idx]:
         btn_type = "primary" if st.session_state.current_subject == subj else "secondary"
-        if st.button(subj, key=f"tab_{subj}", type=btn_type):
+        # FIX ADDED HERE: use_container_width=True forces uniform stretching
+        if st.button(subj, key=f"tab_{subj}", type=btn_type, use_container_width=True):
             st.session_state.current_subject = subj
             st.rerun()
 
@@ -500,7 +522,9 @@ s_col3.metric("TOTAL CLASSES", total_subj_classes)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-
+# ------------------------------------------
+# STUDENT VIEW: CLOCK ATTENDANCE
+# ------------------------------------------
 if st.session_state.role == "Student":
     st.markdown('<div class="kinetic-subtitle">MARK ATTENDANCE</div>', unsafe_allow_html=True)
     
@@ -526,7 +550,9 @@ if st.session_state.role == "Student":
     else:
         st.info(f"NO {current_subj} CLASS SCHEDULED ON {selected_date.strftime('%b %d, %Y')}.")
 
-
+# ------------------------------------------
+# ADMIN VIEW: SCHEDULE MANAGEMENT & USERS
+# ------------------------------------------
 if st.session_state.role == "Admin":
     st.markdown("---")
     st.markdown('<div class="kinetic-subtitle">SCHEDULE CONTROLS</div>', unsafe_allow_html=True)
@@ -536,7 +562,7 @@ if st.session_state.role == "Admin":
     col_a1, col_a2, col_a3 = st.columns(3)
     
     with col_a1:
-        if st.button("ADD EXTRA CLASS", type="primary"):
+        if st.button("ADD EXTRA CLASS", type="primary", use_container_width=True):
             extra_classes, cancelled_classes = get_overrides()
             current_extras = extra_classes.get(current_subj, [])
             if admin_date not in current_extras:
@@ -551,7 +577,7 @@ if st.session_state.role == "Admin":
                 st.warning("CLASS ALREADY EXISTS ON THIS DATE.")
                 
     with col_a2:
-        if st.button("CANCEL CLASS", type="primary"):
+        if st.button("CANCEL CLASS", type="primary", use_container_width=True):
             extra_classes, cancelled_classes = get_overrides()
             current_cancels = cancelled_classes.get(current_subj, [])
             if admin_date not in current_cancels:
@@ -566,7 +592,7 @@ if st.session_state.role == "Admin":
                 st.warning("CLASS IS ALREADY CANCELLED.")
 
     with col_a3:
-        if st.button("RESET COUNTS", type="secondary"):
+        if st.button("RESET COUNTS", type="secondary", use_container_width=True):
             supabase.table("absences").delete().neq("subject", "DUMMY").execute()
             supabase.table("overrides").delete().neq("subject", "DUMMY").execute()
             
