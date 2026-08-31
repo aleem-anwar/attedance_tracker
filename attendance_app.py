@@ -8,9 +8,8 @@ import extra_streamlit_components as stx
 st.set_page_config(page_title="IIITP Attendance Portal", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# COOKIE MANAGER INITIALIZATION
+# COOKIE MANAGER INITIALIZATION (FIXED)
 # ==========================================
-@st.cache_resource
 def get_cookie_manager():
     return stx.CookieManager()
 
