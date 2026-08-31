@@ -6,25 +6,21 @@ from supabase import create_client, Client
 
 st.set_page_config(page_title="IIITP Attendance Portal", layout="wide", initial_sidebar_state="collapsed")
 
-# ==========================================
-# SUPABASE CONNECTION INITIALIZATION
-# ==========================================
+
 @st.cache_resource
 def init_supabase() -> Client:
     try:
         url = st.secrets["supabase"]["url"]
         key = st.secrets["supabase"]["key"]
     except Exception:
-        # Fallback placeholders if secrets aren't set yet locally
+     
         url = "https://placeholder.supabase.co"
         key = "placeholder-key"
     return create_client(url, key)
 
 supabase = init_supabase()
 
-# ==========================================
-# KINETIC TYPOGRAPHY DESIGN SYSTEM CSS
-# ==========================================
+
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&display=swap');
@@ -180,9 +176,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# ACADEMIC CONFIGURATION
-# ==========================================
+
 START_DATE = datetime.date(2026, 8, 20)
 END_DATE = datetime.date(2026, 12, 11)
 
@@ -216,9 +210,7 @@ def get_timetable(lab_group):
         tt[4].append("BEE Lab")
     return tt
 
-# ==========================================
-# SESSION STATE INITIALIZATION
-# ==========================================
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
@@ -230,7 +222,7 @@ if "lab_batch" not in st.session_state:
 if "current_subject" not in st.session_state:
     st.session_state.current_subject = "BEE"
 
-# Supabase Helper Functions
+
 def get_user_absences(username):
     response = supabase.table("absences").select("subject, date").eq("username", username).execute()
     absences = {}
@@ -333,9 +325,6 @@ def get_all_subjects():
     return sorted(list(subjects))
 
 
-# ==========================================
-# AUTHENTICATION PAGE
-# ==========================================
 if not st.session_state.logged_in:
     st.markdown("""
     <div class="kinetic-title">
@@ -398,9 +387,6 @@ if not st.session_state.logged_in:
     st.stop()
 
 
-# ==========================================
-# MAIN APPLICATION INTERFACE
-# ==========================================
 st.sidebar.markdown(f'<div class="kinetic-subtitle">{st.session_state.role}</div>', unsafe_allow_html=True)
 st.sidebar.write(f"USER: **{st.session_state.username.upper()}**")
 
@@ -422,9 +408,7 @@ if st.session_state.role == "Student":
 
 user_absences = get_user_absences(st.session_state.username)
 
-# ------------------------------------------
-# STUDENT NOTIFICATION BAR (< 80% CHECK)
-# ------------------------------------------
+
 if st.session_state.role == "Student":
     low_attendance_subjects = []
     for s in all_subjects:
@@ -440,9 +424,7 @@ if st.session_state.role == "Student":
         warning_msg = f"⚠️ WARNING: Attendance has fallen below 80% in: {', '.join(low_attendance_subjects)}"
         st.error(warning_msg)
 
-# ------------------------------------------
-# OVERALL ATTENDANCE CALCULATION (MARQUEE)
-# ------------------------------------------
+
 total_overall_classes = 0
 total_overall_attended = 0
 
@@ -469,9 +451,6 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ------------------------------------------
-# SUBJECT SWITCHER BUTTONS
-# ------------------------------------------
 st.markdown('<div class="kinetic-subtitle">SELECT SUBJECT</div>', unsafe_allow_html=True)
 cols = st.columns(len(all_subjects))
 for idx, subj in enumerate(all_subjects):
@@ -500,9 +479,7 @@ s_col3.metric("TOTAL CLASSES", total_subj_classes)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ------------------------------------------
-# STUDENT VIEW: CLOCK ATTENDANCE
-# ------------------------------------------
+
 if st.session_state.role == "Student":
     st.markdown('<div class="kinetic-subtitle">MARK ATTENDANCE</div>', unsafe_allow_html=True)
     
@@ -528,9 +505,7 @@ if st.session_state.role == "Student":
     else:
         st.info(f"NO {current_subj} CLASS SCHEDULED ON {selected_date.strftime('%b %d, %Y')}.")
 
-# ------------------------------------------
-# ADMIN VIEW: SCHEDULE MANAGEMENT & USERS
-# ------------------------------------------
+
 if st.session_state.role == "Admin":
     st.markdown("---")
     st.markdown('<div class="kinetic-subtitle">SCHEDULE CONTROLS</div>', unsafe_allow_html=True)
