@@ -3,17 +3,15 @@ import datetime
 import math
 import pandas as pd
 from supabase import create_client, Client
-import extra_streamlit_components as stx
+from streamlit_cookies_controller import CookieController
 
 st.set_page_config(page_title="IIITP Attendance Portal", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
-# COOKIE MANAGER INITIALIZATION (FIXED)
+# COOKIE CONTROLLER INITIALIZATION
 # ==========================================
-def get_cookie_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
+controller = CookieController()
+cookies = controller.getAll()
 
 # ==========================================
 # SUPABASE CONNECTION INITIALIZATION
@@ -232,9 +230,8 @@ if "logged_in" not in st.session_state:
     st.session_state.role = None
     st.session_state.username = ""
 
-# Check if cookie exists to persist login across sessions/visits
-saved_user = cookie_manager.get(cookie="iiitp_user")
-saved_role = cookie_manager.get(cookie="iiitp_role")
+saved_user = cookies.get("iiitp_user") if cookies else None
+saved_role = cookies.get("iiitp_role") if cookies else None
 
 if not st.session_state.logged_in and saved_user and saved_role:
     st.session_state.logged_in = True
@@ -382,9 +379,8 @@ if not st.session_state.logged_in:
                 st.session_state.username = clean_user
                 st.session_state.role = role
                 
-                # Set persistent browser cookies valid for 30 days
-                cookie_manager.set("iiitp_user", clean_user, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
-                cookie_manager.set("iiitp_role", role, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+                controller.set("iiitp_user", clean_user)
+                controller.set("iiitp_role", role)
                 st.rerun()
             else:
                 st.error("INVALID USERNAME OR PASSWORD.")
@@ -427,12 +423,11 @@ st.sidebar.markdown(f'<div class="kinetic-subtitle">{st.session_state.role}</div
 st.sidebar.write(f"USER: **{st.session_state.username.upper()}**")
 
 if st.sidebar.button("LOGOUT"):
-    # Clear session and wipe browser cookies on logout
     st.session_state.logged_in = False
     st.session_state.role = None
     st.session_state.username = ""
-    cookie_manager.delete("iiitp_user")
-    cookie_manager.delete("iiitp_role")
+    controller.remove("iiitp_user")
+    controller.remove("iiitp_role")
     st.rerun()
 
 all_subjects = get_all_subjects()
